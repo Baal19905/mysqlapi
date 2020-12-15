@@ -45,6 +45,7 @@ int main(int argc, char **argv)
         prefix = argv[5];
     }
     if (0 != mysql.create(ip, usr, pwd, db, 3306)) {
+        cout << "create failed!!! [" << mysql.code() << "][" << mysql.msg() << "]" << endl;
         return -1;
     }
     if (cache_table_info() != 0) {

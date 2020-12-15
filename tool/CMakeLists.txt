@@ -9,31 +9,31 @@ set(PRJ_VER "1.0.1")
 
 
 #include compile macro.
-include(${CMAKE_CURRENT_SOURCE_DIR}/../../head.cmake)
-include(${CMAKE_CURRENT_SOURCE_DIR}/../head.cmake)
-include(${CMAKE_CURRENT_SOURCE_DIR}/../dev_version.cmake)
+set(CMAKE_CXX_FLAGS_RELEASE "$ENV{CXXFLAGS} -O2 -std=c++11")
+set(CMAKE_CXX_FLAGS_DEBUG "$ENV{CXXFLAGS} -O0 -g -std=c++11")
+set(CMAKE_SKIP_RPATH TRUE)
+
 
 
 #define
-set(MYSQL_CLIENT ${CMAKE_CURRENT_SOURCE_DIR}/../mysql_client)
-set(MYSQL ${CMAKE_CURRENT_SOURCE_DIR}/../../../third_dependency/mysql/)
+set(MYSQL_CLIENT ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 
 
 #include dir.
-include_directories(${MYSQL_CLIENT}/include)
-include_directories(${MYSQL}/mysql)
+include_directories(/usr/include/mysql/)
+include_directories(${MYSQL_CLIENT})
 
 #link dir
-link_directories(${MYSQL}/lib)
+link_directories(/usr/lib64/mysql/)
 
 #source.
 aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR} SRC_FILES)
-aux_source_directory(${MYSQL_CLIENT}/source SRC_FILES)
+aux_source_directory(${MYSQL_CLIENT} SRC_FILES)
 
 #target.
 add_executable(${PROJECT_NAME} ${SRC_FILES})
 target_link_libraries (${PROJECT_NAME} mysqlclient)
-set_target_properties(${PROJECT_NAME} PROPERTIES VERSION ${PRJ_VER}${_SVN_VER})
+set_target_properties(${PROJECT_NAME} PROPERTIES VERSION ${PRJ_VER})
 
 
 #include
