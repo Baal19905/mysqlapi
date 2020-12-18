@@ -7,10 +7,11 @@
 void print_err(string mark);
 int cache_table_info();
 void gen_struct(ofstream &file, table_info &info);
+void gen_init_all_fields(ofstream &file, table_info &info);
 void gen_head(table_info &info);
 void gen_src(table_info &info);
 void gen_defination(ofstream &file, table_info &info);
-void gen_index_func_name(ofstream &file, index_info &e, string func_head, string name_space = "");
+void gen_index_func_name(ofstream &file, index_info &e, string func_head, string name_space = "", bool bsrc = false);
 void gen_db_unrelated_reference(ofstream &file, table_info &info);
 void gen_insert_reference(ofstream &file, table_info &info);
 void gen_indexed_select_reference(ofstream &file, table_info &info);
@@ -183,6 +184,8 @@ void gen_head(table_info &info)
     file << "#include <string>" << endl;
     file << "#include <sys/types.h>" << endl;
     file << "#include <sys/stat.h>" << endl;
+    file << "#include <unordered_set>" << endl;
+    file << "#include <unordered_map>" << endl;
     file << endl;
     gen_struct(file, info);
     file << "class " << utils::lower(info.name) << endl;
@@ -222,20 +225,21 @@ void gen_src(table_info &info)
 
 void gen_insert_dump_sql_reference(ofstream &file, table_info &info)
 {
-    file << "std::string &" << info.name << "::insert_dump_sql(std::string &sql)" << endl;
+    file << "std::string &" << info.name << "::insert_dump_sql(std::string &sql, const std::unordered_set<std::string> &omit_fields)" << endl;
     file << "{" << endl;
     file << "    char tmp[4096];" << endl;
-    file << "    sql = \"insert into " << info.name << "(";
+    file << "    std::string fields;" << endl;
+    file << "    for (auto &e : all_fields_) {" << endl;
+    file << "        if (omit_fields.find(e) == omit_fields.end()) {" << endl;
+    file << "            fields += e + \",\";" << endl;
+    file << "        }" << endl;
+    file << "    }" << endl;
+    file << "    fields[fields.length() - 1] = ')';" << endl;
+    file << "    sql = \"insert into " << info.name << "(\" + fields + \") values (\";" << endl;
     for (int i = 0; i < info.fields.size(); i++) {
-        file << info.fields[i].name;
-        if (i < info.fields.size() - 1) {
-            file << ", ";
-        }
-    }
-    file << ") values (\";" << endl;
-    for (int i = 0; i < info.fields.size(); i++) {
+        file << "    if (omit_fields.find(\"" << info.fields[i].name << "\") == omit_fields.end()) {" << endl;
         if (info.fields[i].db_type == "tinyint") {
-            file << "    sql += std::to_string((int)info_." << info.fields[i].name << ");" << endl;
+            file << "        sql += std::to_string((int)info_." << info.fields[i].name << ");" << endl;
         }
         else if (info.fields[i].db_type == "smallint"||
                  info.fields[i].db_type == "mediumint" ||
@@ -244,7 +248,7 @@ void gen_insert_dump_sql_reference(ofstream &file, table_info &info)
                  info.fields[i].db_type == "bigint" ||
                  info.fields[i].db_type == "float" ||
                  info.fields[i].db_type == "double") {
-            file << "    sql += std::to_string(info_." << info.fields[i].name << ");" << endl;
+            file << "        sql += std::to_string(info_." << info.fields[i].name << ");" << endl;
         }
         else if (info.fields[i].db_type == "char" ||
                  info.fields[i].db_type == "varchar" ||
@@ -256,7 +260,7 @@ void gen_insert_dump_sql_reference(ofstream &file, table_info &info)
                  info.fields[i].db_type == "time" ||
                  info.fields[i].db_type == "datetime" ||
                  info.fields[i].db_type == "timestamp") {
-            file << "    sql += std::string(\"'\") + info_." << info.fields[i].name << ".buf + std::string(\"'\");" << endl;
+            file << "        sql += std::string(\"'\") + info_." << info.fields[i].name << ".buf + std::string(\"'\");" << endl;
         }
         else if (info.fields[i].db_type == "tinyblob" ||
                     info.fields[i].db_type == "blob" ||
@@ -264,11 +268,12 @@ void gen_insert_dump_sql_reference(ofstream &file, table_info &info)
                     info.fields[i].db_type == "longblob" ||
                     info.fields[i].db_type == "binary" ||
                     info.fields[i].db_type == "varbinary") {
-            file << "    sql += hex_format(info_." << info.fields[i].name << ".buf, info_." << info.fields[i].name << ".len, tmp);" << endl;
+            file << "        sql += hex_format(info_." << info.fields[i].name << ".buf, info_." << info.fields[i].name << ".len, tmp);" << endl;
         }
         if (i < info.fields.size() - 1) {
-            file << "    sql += \", \";" << endl;
+            file << "        sql += \", \";" << endl;
         }
+        file << "    }" << endl;
     }
     file << "    sql += \");\\n\";" << endl;
     file << "    return sql;" << endl;
@@ -278,13 +283,14 @@ void gen_insert_dump_sql_reference(ofstream &file, table_info &info)
 void gen_update_dump_sql_reference(ofstream &file, table_info &info)
 {
     for (auto &e : info.indexes) {
-        file << "std::string &" << info.name << "::update_dump_sql_by_" << e.name << "(std::string &sql)" << endl;
+        file << "std::string &" << info.name << "::update_dump_sql_by_" << e.name << "(std::string &sql, const std::unordered_set<std::string> &omit_fields)" << endl;
         file << "{" << endl;
         file << "    char tmp[4096];" << endl;
         file << "    sql = \"update " << info.name << " set \";" << endl;
         for (int i = 0; i < info.fields.size(); i++) {
+            file << "    if (omit_fields.find(\"" << info.fields[i].name << "\") == omit_fields.end()) {" << endl;
             if (info.fields[i].db_type == "tinyint") {
-                file << "    sql += \"" << info.fields[i].name << " = \" + std::to_string((int)info_." << info.fields[i].name << ");" << endl;
+                file << "        sql += \"" << info.fields[i].name << " = \" + std::to_string((int)info_." << info.fields[i].name << ");" << endl;
             }
             else if (info.fields[i].db_type == "smallint"||
                     info.fields[i].db_type == "mediumint" ||
@@ -293,7 +299,7 @@ void gen_update_dump_sql_reference(ofstream &file, table_info &info)
                     info.fields[i].db_type == "bigint" ||
                     info.fields[i].db_type == "float" ||
                     info.fields[i].db_type == "double") {
-                file << "    sql += \"" << info.fields[i].name << " = \" + std::to_string(info_." << info.fields[i].name << ");" << endl;
+                file << "        sql += \"" << info.fields[i].name << " = \" + std::to_string(info_." << info.fields[i].name << ");" << endl;
             }
             else if (info.fields[i].db_type == "char" ||
                     info.fields[i].db_type == "varchar" ||
@@ -305,7 +311,7 @@ void gen_update_dump_sql_reference(ofstream &file, table_info &info)
                     info.fields[i].db_type == "time" ||
                     info.fields[i].db_type == "datetime" ||
                     info.fields[i].db_type == "timestamp") {
-                file << "    sql += \"" << info.fields[i].name << " = \" + std::string(\"'\") + info_." << info.fields[i].name << ".buf + std::string(\"'\");" << endl;
+                file << "        sql += \"" << info.fields[i].name << " = \" + std::string(\"'\") + info_." << info.fields[i].name << ".buf + std::string(\"'\");" << endl;
             }
             else if (info.fields[i].db_type == "tinyblob" ||
                         info.fields[i].db_type == "blob" ||
@@ -313,11 +319,11 @@ void gen_update_dump_sql_reference(ofstream &file, table_info &info)
                         info.fields[i].db_type == "longblob" ||
                         info.fields[i].db_type == "binary" ||
                         info.fields[i].db_type == "varbinary") {
-                file << "    sql += std::string(\"" << info.fields[i].name << " = \") + hex_format(info_." << info.fields[i].name << ".buf, info_." << info.fields[i].name << ".len, tmp);" << endl;
+                file << "        sql += std::string(\"" << info.fields[i].name << " = \") + hex_format(info_." << info.fields[i].name << ".buf, info_." << info.fields[i].name << ".len, tmp);" << endl;
             }
             if (i < info.fields.size() - 1) {
-                file << "    sql += \", \";" << endl;
-            }
+                file << "        sql += \", \";" << endl;
+            }file << "    }" << endl;
         }
         file << "    sql += \" where \";";
         for (int i = 0; i < e.column.size(); i++) {
@@ -503,26 +509,16 @@ void gen_fetch_reference(ofstream &file, table_info &info)
 
 void gen_select_reference(ofstream &file, table_info &info)
 {
-    file << "int32_t " << info.name << "::select(const std::string &where)" << endl;
+    file << "int32_t " << info.name << "::select(const std::string &where, const std::unordered_set<std::string> &omit_fields)" << endl;
     file << "{" << endl;
-    file << "    std::string sql = \"select ";
-    for (int i = 0; i < info.fields.size(); i++) {
-        if (info.fields[i].db_type == "timestamp" ||
-            info.fields[i].db_type == "datetime") {
-            file << "date_format(" << info.fields[i].name << ",'%Y-%m-%d_%H:%i:%s.%f')";
-        }
-        else if (info.fields[i].db_type == "time") {
-            file << "time_format(" << info.fields[i].name << ",,'%H:%i:%s')";
-        }
-        else {
-            file << info.fields[i].name;
-        }
-        if (i < info.fields.size() - 1) {
-            file << ", ";
-        }
-    }
-    file << " from " << info.name << " \";" << endl;
-    file << "    sql += where;" << endl;
+    file << "    std::string fields;" << endl;
+    file << "    for (auto &e : all_fields_) {" << endl;
+    file << "        if (omit_fields.find(e) == omit_fields.end()) {" << endl;
+    file << "            fields += e + \",\";" << endl;
+    file << "        }" << endl;
+    file << "    }" << endl;
+    file << "    fields[fields.length() - 1] = 0;" << endl;
+    file << "    std::string sql = \"select \" + fields + \" from " << info.name << " \" + where;" << endl;
     file << "    if (mysql_->execute(sql)) {" << endl;
     file << "        code_ = mysql_->code();" << endl;
     file << "        msg_ = mysql_->msg();" << endl;
@@ -530,14 +526,16 @@ void gen_select_reference(ofstream &file, table_info &info)
     file << "    }" << endl;
     int ref = 0;
     for (auto &e : info.fields) {
+        file << "    if (omit_fields.find(\"" << e.name << "\") == omit_fields.end()) {" << endl;
         if (e.type != "buffer_field") {
-            file << "    buffer_array_[" << ref << "].buf = (char *)&info_." << e.name << ";" << endl;
-            file << "    buffer_array_[" << ref << "].size = sizeof(info_." << e.name << ");" << endl;
-            file << "    mysql_->set_field(0, &buffer_array_[" << ref++ << "]);" << endl;
+            file << "        buffer_array_[" << ref << "].buf = (char *)&info_." << e.name << ";" << endl;
+            file << "        buffer_array_[" << ref << "].size = sizeof(info_." << e.name << ");" << endl;
+            file << "        mysql_->set_field(0, &buffer_array_[" << ref++ << "]);" << endl;
         }
         else {
-            file << "    mysql_->set_field(0, &info_." << e.name << ");" << endl;
+            file << "        mysql_->set_field(0, &info_." << e.name << ");" << endl;
         }
+        file << "    }" << endl;
     }
     file << "    return 0;" << endl;
     file << "}" << endl;
@@ -546,52 +544,50 @@ void gen_select_reference(ofstream &file, table_info &info)
 
 void gen_insert_reference(ofstream &file, table_info &info)
 {
-    file << "int32_t " << info.name << "::insert()" << endl;
+    file << "int32_t " << info.name << "::insert(const std::unordered_set<std::string> &omit_fields)" << endl;
     file << "{" << endl;
-    file << "    if (stmt_insert_" << " == nullptr) {" << endl;
-    file << "        std::string sql = \"insert into " << info.name << "(";
-    for (int i = 0; i < info.fields.size(); i++) {
-        file << info.fields[i].name;
-        if (i < info.fields.size() - 1) {
-            file << ", ";
-        }
-    }
-    file << ") values (";
-    for (int i = 0; i < info.fields.size(); i++) {
-        file << "?";
-        if (i < info.fields.size() - 1) {
-            file << ", ";
-        }
-    }
-    file << ")\";" << endl;
-    file << "        stmt_insert_ =  mysql_->prepare_stmt(sql);" << endl;
-    file << "        if (stmt_insert_ == nullptr) {" << endl;
+    file << "    std::string fields = \"(\";" << endl;
+    file << "    std::string values = \"(\";" << endl;
+    file << "    for (auto &e : all_fields_) {" << endl;
+    file << "        if (omit_fields.find(e) == omit_fields.end()) {" << endl;
+    file << "            fields += e + \",\";" << endl;
+    file << "            values += \"?,\";" << endl;
+    file << "        }" << endl;
+    file << "    }" << endl;
+    file << "    fields[fields.length() - 1] = ')';" << endl;
+    file << "    values[values.length() - 1] = ')';" << endl;
+    file << "    std::string sql = \"insert into " << info.name << " \" + fields + \" values \" + values;" << endl;
+    file << "    mysql_stmt *stmt = nullptr;" << endl;
+    file << "    if ((stmt = stmts_[sql]) == nullptr) {" << endl;
+    file << "        stmt =  mysql_->prepare_stmt(sql);" << endl;
+    file << "        if (stmt == nullptr) {" << endl;
     file << "            code_ = mysql_->code();" << endl;
     file << "            msg_ = mysql_->msg();" << endl;
-    file << "            sql = insert_dump_sql(sql);" << endl;
+    file << "            sql = insert_dump_sql(sql, omit_fields);" << endl;
     file << "            dump(sql.c_str());" << endl;
     file << "            return -1;" << endl;
     file << "        }" << endl;
     for (auto &f : info.fields) {
+        file << "        if (omit_fields.find(\"" << f.name << "\") == omit_fields.end()) {" << endl;
         if (f.db_type == "tinyint") {
-            file << "        stmt_insert_->set_param_tiny(info_." << f.name << ");" << endl;
+            file << "            stmt->set_param_tiny(info_." << f.name << ");" << endl;
         }
         else if (f.db_type == "smallint") {
-            file << "        stmt_insert_->set_param_short(info_." << f.name << ");" << endl;
+            file << "            stmt->set_param_short(info_." << f.name << ");" << endl;
         }
         else if (f.db_type == "mediumint" ||
                     f.db_type == "int" ||
                     f.db_type == "integer") {
-            file << "        stmt_insert_->set_param_long(info_." << f.name << ");" << endl;
+            file << "            stmt->set_param_long(info_." << f.name << ");" << endl;
         }
         else if (f.db_type == "bigint") {
-            file << "        stmt_insert_->set_param_longlong(info_." << f.name << ");" << endl;
+            file << "            stmt->set_param_longlong(info_." << f.name << ");" << endl;
         }
         else if (f.db_type == "float") {
-            file << "        stmt_insert_->set_param_float(info_." << f.name << ");" << endl;
+            file << "            stmt->set_param_float(info_." << f.name << ");" << endl;
         }
         else if (f.db_type == "double") {
-            file << "        stmt_insert_->set_param_double(info_." << f.name << ");" << endl;
+            file << "            stmt->set_param_double(info_." << f.name << ");" << endl;
         }
         else if (f.db_type == "char" ||
                     f.db_type == "varchar" ||
@@ -599,7 +595,7 @@ void gen_insert_reference(ofstream &file, table_info &info)
                     f.db_type == "text" ||
                     f.db_type == "mediumtext" ||
                     f.db_type == "longtext") {
-            file << "        stmt_insert_->set_param_string(&info_." << f.name << ");" << endl;
+            file << "            stmt->set_param_string(&info_." << f.name << ");" << endl;
         }
         else if (f.db_type == "tinyblob" ||
                     f.db_type == "blob" ||
@@ -607,27 +603,28 @@ void gen_insert_reference(ofstream &file, table_info &info)
                     f.db_type == "longblob" ||
                     f.db_type == "binary" ||
                     f.db_type == "varbinary") {
-            file << "        stmt_insert_->set_param_blob(&info_." << f.name << ");" << endl;
+            file << "            stmt->set_param_blob(&info_." << f.name << ");" << endl;
         }
         else if (f.db_type == "date") {
-            file << "        stmt_insert_->set_param_date(&info_." << f.name << ");" << endl;
+            file << "            stmt->set_param_date(&info_." << f.name << ");" << endl;
         }
         else if (f.db_type == "time") {
-            file << "        stmt_insert_->set_param_time(&info_." << f.name << ");" << endl;
+            file << "            stmt->set_param_time(&info_." << f.name << ");" << endl;
         }
         else if (f.db_type == "datetime") {
-            file << "        stmt_insert_->set_param_datetime(&info_." << f.name << ");" << endl;
+            file << "            stmt->set_param_datetime(&info_." << f.name << ");" << endl;
         }
         else if (f.db_type == "timestamp") {
-            file << "        stmt_insert_->set_param_timestamp(&info_." << f.name << ");" << endl;
+            file << "            stmt->set_param_timestamp(&info_." << f.name << ");" << endl;
         }
+        file << "        }" << endl;
     }
     file << "    }" << endl;
-    file << "    if (stmt_insert_->execute() != 0) {" << endl;
-    file << "        code_ = stmt_insert_->code();" << endl;
-    file << "        msg_ = stmt_insert_->msg();" << endl;
+    file << "    if (stmt->execute() != 0) {" << endl;
+    file << "        code_ = stmt->code();" << endl;
+    file << "        msg_ = stmt->msg();" << endl;
     file << "        std::string sql;" << endl;
-    file << "        sql = insert_dump_sql(sql);" << endl;
+    file << "        sql = insert_dump_sql(sql, omit_fields);" << endl;
     file << "        dump(sql.c_str());" << endl;
     file << "        return -1;" << endl;
     file << "    }" << endl;
@@ -661,27 +658,17 @@ void check_param(ofstream &file, index_info &indexes)
 void gen_indexed_select_reference(ofstream &file, table_info &info)
 {
     for (auto &e : info.indexes) {
-        gen_index_func_name(file, e, "select_by_", info.name);
+        gen_index_func_name(file, e, "select_by_", info.name, true);
         file << endl << "{" << endl;
         check_param(file, e);
-        file << "    if (stmt_select_by_" << e.name << "_ == nullptr) {" << endl;
-        file << "        std::string sql = \"select ";
-        for (int i = 0; i < info.fields.size(); i++) {
-            if (info.fields[i].db_type == "timestamp" ||
-                info.fields[i].db_type == "datetime") {
-                file << "date_format(" << info.fields[i].name << ",'%Y-%m-%d_%H:%i:%s.%f')";
-            }
-            else if (info.fields[i].db_type == "time") {
-                file << "time_format(" << info.fields[i].name << ",,'%H:%i:%s')";
-            }
-            else {
-                file << info.fields[i].name;
-            }
-            if (i < info.fields.size() - 1) {
-                file << ", ";
-            }
-        }
-        file << " from " << info.name << " where ";
+        file << "    std::string fields;" << endl;
+        file << "    for (auto &e : all_fields_) {" << endl;
+        file << "        if (omit_fields.find(e) == omit_fields.end()) {" << endl;
+        file << "            fields += e + \",\";" << endl;
+        file << "        }" << endl;
+        file << "    }" << endl;
+        file << "    fields[fields.length() - 1] = 0;" << endl;
+        file << "    std::string sql = \"select \" + fields + \" from " << info.name << " where ";
         for (int i = 0; i < e.column.size(); i++) {
             file << e.column[i].name << " = ?";
             if (i < e.column.size() - 1) {
@@ -689,32 +676,36 @@ void gen_indexed_select_reference(ofstream &file, table_info &info)
             }
         }
         file << "\";" << endl;
-        file << "        stmt_select_by_" << e.name << "_ =  mysql_->prepare_stmt(sql);" << endl;
-        file << "        if (stmt_select_by_" << e.name << "_ == nullptr) {" << endl;
+        file << "    mysql_stmt *stmt = nullptr;" << endl;
+        file << "    if ((stmt = stmts_[sql]) == nullptr) {" << endl;
+        file << "        stmt =  mysql_->prepare_stmt(sql);" << endl;
+        file << "        if (stmt == nullptr) {" << endl;
         file << "            code_ = mysql_->code();" << endl;
         file << "            msg_ = mysql_->msg();" << endl;
         file << "            return -1;" << endl;
         file << "        }" << endl;
+        file << "        stmt_select_by_" << e.name << "_ = stmt;" << endl;
         for (auto &f : info.fields) {
+            file << "        if (omit_fields.find(\"" << f.name << "\") == omit_fields.end()) {" << endl;
             if (f.db_type == "tinyint") {
-                file << "        stmt_select_by_" << e.name << "_->set_result_tiny(info_." << f.name << ");" << endl;
+                file << "            stmt->set_result_tiny(info_." << f.name << ");" << endl;
             }
             else if (f.db_type == "smallint") {
-                file << "        stmt_select_by_" << e.name << "_->set_result_short(info_." << f.name << ");" << endl;
+                file << "            stmt->set_result_short(info_." << f.name << ");" << endl;
             }
             else if (f.db_type == "mediumint" ||
                      f.db_type == "int" ||
                      f.db_type == "integer") {
-                file << "        stmt_select_by_" << e.name << "_->set_result_long(info_." << f.name << ");" << endl;
+                file << "            stmt->set_result_long(info_." << f.name << ");" << endl;
             }
             else if (f.db_type == "bigint") {
-                file << "        stmt_select_by_" << e.name << "_->set_result_longlong(info_." << f.name << ");" << endl;
+                file << "            stmt->set_result_longlong(info_." << f.name << ");" << endl;
             }
             else if (f.db_type == "float") {
-                file << "        stmt_select_by_" << e.name << "_->set_result_float(info_." << f.name << ");" << endl;
+                file << "            stmt->set_result_float(info_." << f.name << ");" << endl;
             }
             else if (f.db_type == "double") {
-                file << "        stmt_select_by_" << e.name << "_->set_result_double(info_." << f.name << ");" << endl;
+                file << "            stmt->set_result_double(info_." << f.name << ");" << endl;
             }
             else if (f.db_type == "char" ||
                      f.db_type == "varchar" ||
@@ -722,7 +713,7 @@ void gen_indexed_select_reference(ofstream &file, table_info &info)
                      f.db_type == "text" ||
                      f.db_type == "mediumtext" ||
                      f.db_type == "longtext") {
-                file << "        stmt_select_by_" << e.name << "_->set_result_string(&info_." << f.name << ");" << endl;
+                file << "            stmt->set_result_string(&info_." << f.name << ");" << endl;
             }
             else if (f.db_type == "tinyblob" ||
                      f.db_type == "blob" ||
@@ -730,41 +721,42 @@ void gen_indexed_select_reference(ofstream &file, table_info &info)
                      f.db_type == "longblob" ||
                     f.db_type == "binary" ||
                     f.db_type == "varbinary") {
-                file << "        stmt_select_by_" << e.name << "_->set_result_blob(&info_." << f.name << ");" << endl;
+                file << "            stmt->set_result_blob(&info_." << f.name << ");" << endl;
             }
             else if (f.db_type == "date") {
-                file << "        stmt_select_by_" << e.name << "_->set_result_date(&info_." << f.name << ");" << endl;
+                file << "            stmt->set_result_date(&info_." << f.name << ");" << endl;
             }
             else if (f.db_type == "time") {
-                file << "        stmt_select_by_" << e.name << "_->set_result_time(&info_." << f.name << ");" << endl;
+                file << "            stmt->set_result_time(&info_." << f.name << ");" << endl;
             }
             else if (f.db_type == "datetime") {
-                file << "        stmt_select_by_" << e.name << "_->set_result_datetime(&info_." << f.name << ");" << endl;
+                file << "            stmt->set_result_datetime(&info_." << f.name << ");" << endl;
             }
             else if (f.db_type == "timestamp") {
-                file << "        stmt_select_by_" << e.name << "_->set_result_timestamp(&info_." << f.name << ");" << endl;
+                file << "            stmt->set_result_timestamp(&info_." << f.name << ");" << endl;
             }
+            file << "        }" << endl;
         }
         for (auto &f : e.column) {
             if (f.db_type == "tinyint") {
-                file << "        stmt_select_by_" << e.name << "_->set_param_tiny(info_." << f.name << ");" << endl;
+                file << "            stmt->set_param_tiny(info_." << f.name << ");" << endl;
             }
             else if (f.db_type == "smallint") {
-                file << "        stmt_select_by_" << e.name << "_->set_param_short(info_." << f.name << ");" << endl;
+                file << "            stmt->set_param_short(info_." << f.name << ");" << endl;
             }
             else if (f.db_type == "mediumint" ||
                      f.db_type == "int" ||
                      f.db_type == "integer") {
-                file << "        stmt_select_by_" << e.name << "_->set_param_long(info_." << f.name << ");" << endl;
+                file << "            stmt->set_param_long(info_." << f.name << ");" << endl;
             }
             else if (f.db_type == "bigint") {
-                file << "        stmt_select_by_" << e.name << "_->set_param_longlong(info_." << f.name << ");" << endl;
+                file << "            stmt->set_param_longlong(info_." << f.name << ");" << endl;
             }
             else if (f.db_type == "float") {
-                file << "        stmt_select_by_" << e.name << "_->set_param_float(info_." << f.name << ");" << endl;
+                file << "            stmt->set_param_float(info_." << f.name << ");" << endl;
             }
             else if (f.db_type == "double") {
-                file << "        stmt_select_by_" << e.name << "_->set_param_double(info_." << f.name << ");" << endl;
+                file << "            stmt->set_param_double(info_." << f.name << ");" << endl;
             }
             else if (f.db_type == "char" ||
                      f.db_type == "varchar" ||
@@ -772,7 +764,7 @@ void gen_indexed_select_reference(ofstream &file, table_info &info)
                      f.db_type == "text" ||
                      f.db_type == "mediumtext" ||
                      f.db_type == "longtext") {
-                file << "        stmt_select_by_" << e.name << "_->set_param_string(&info_." << f.name << ");" << endl;
+                file << "            stmt->set_param_string(&info_." << f.name << ");" << endl;
             }
             else if (f.db_type == "tinyblob" ||
                      f.db_type == "blob" ||
@@ -780,19 +772,19 @@ void gen_indexed_select_reference(ofstream &file, table_info &info)
                      f.db_type == "longblob" ||
                     f.db_type == "binary" ||
                     f.db_type == "varbinary") {
-                file << "        stmt_select_by_" << e.name << "_->set_param_blob(&info_." << f.name << ");" << endl;
+                file << "            stmt->set_param_blob(&info_." << f.name << ");" << endl;
             }
             else if (f.db_type == "date") {
-                file << "        stmt_select_by_" << e.name << "_->set_param_date(&info_." << f.name << ");" << endl;
+                file << "            stmt->set_param_date(&info_." << f.name << ");" << endl;
             }
             else if (f.db_type == "time") {
-                file << "        stmt_select_by_" << e.name << "_->set_param_time(&info_." << f.name << ");" << endl;
+                file << "            stmt->set_param_time(&info_." << f.name << ");" << endl;
             }
             else if (f.db_type == "datetime") {
-                file << "        stmt_select_by_" << e.name << "_->set_param_datetime(&info_." << f.name << ");" << endl;
+                file << "            stmt->set_param_datetime(&info_." << f.name << ");" << endl;
             }
             else if (f.db_type == "timestamp") {
-                file << "        stmt_select_by_" << e.name << "_->set_param_timestamp(&info_." << f.name << ");" << endl;
+                file << "            stmt->set_param_timestamp(&info_." << f.name << ");" << endl;
             }
         }
         file << "    }" << endl;
@@ -805,9 +797,9 @@ void gen_indexed_select_reference(ofstream &file, table_info &info)
                 file << "    info_." << f.name << ".len = strlen(info_." << f.name << ".buf);" << endl;
             }
         }
-        file << "    if (stmt_select_by_" << e.name << "_->execute() != 0) {" << endl;
-        file << "        code_ = " << "stmt_select_by_" << e.name << "_->code();" << endl;
-        file << "        msg_ = " << "stmt_select_by_" << e.name << "_->msg();" << endl;
+        file << "    if (stmt->execute() != 0) {" << endl;
+        file << "        code_ = " << "stmt->code();" << endl;
+        file << "        msg_ = " << "stmt->msg();" << endl;
         file << "        return -1;" << endl;
         file << "    }" << endl;
         file << "    return 0;" << endl;
@@ -841,17 +833,17 @@ void gen_indexed_fetch_reference(ofstream &file, table_info &info)
 void gen_indexed_update_reference(ofstream &file, table_info &info)
 {
     for (auto &e : info.indexes) {
-        gen_index_func_name(file, e, "update_by_", info.name);
+        gen_index_func_name(file, e, "update_by_", info.name, true);
         file << endl << "{" << endl;
         check_param(file, e);
-        file << "    if (stmt_update_by_" << e.name << "_ == nullptr) {" << endl;
-        file << "        std::string sql = \"update " << info.name << " set ";
-        for (int i = 0; i < info.fields.size(); i++) {
-            file << info.fields[i].name << " = ?";
-            if (i < info.fields.size() - 1) {
-                file << ", ";
-            }
-        }
+        file << "    std::string fields;" << endl;
+        file << "    for (auto &e : all_fields_) {" << endl;
+        file << "        if (omit_fields.find(e) == omit_fields.end()) {" << endl;
+        file << "            fields += e + \" = ?,\";" << endl;
+        file << "        }" << endl;
+        file << "    }" << endl;
+        file << "    fields[fields.length() - 1] = 0;" << endl;
+        file << "    std::string sql = \"update " << info.name << " set \" + fields + \"";
         file << " where ";
         for (int i = 0; i < e.column.size(); i++) {
             file << e.column[i].name << " = ?";
@@ -860,34 +852,35 @@ void gen_indexed_update_reference(ofstream &file, table_info &info)
             }
         }
         file << "\";" << endl;
-        file << "        stmt_update_by_" << e.name << "_ =  mysql_->prepare_stmt(sql);" << endl;
-        file << "        if (stmt_update_by_" << e.name << "_ == nullptr) {" << endl;
+        file << "    mysql_stmt *stmt = nullptr;" << endl;
+        file << "    if ((stmt = stmts_[sql]) == nullptr) {" << endl;
+        file << "        stmt =  mysql_->prepare_stmt(sql);" << endl;
+        file << "        if (stmt == nullptr) {" << endl;
         file << "            code_ = mysql_->code();" << endl;
         file << "            msg_ = mysql_->msg();" << endl;
-        file << "            sql = update_dump_sql_by_" << e.name << "(sql);" << endl;
-        file << "            dump(sql.c_str());" << endl;
         file << "            return -1;" << endl;
         file << "        }" << endl;
         for (auto &f : info.fields) {
+            file << "        if (omit_fields.find(\"" << f.name << "\") == omit_fields.end()) {" << endl;
             if (f.db_type == "tinyint") {
-                file << "        stmt_update_by_" << e.name << "_->set_param_tiny(info_." << f.name << ");" << endl;
+                file << "            stmt->set_param_tiny(info_." << f.name << ");" << endl;
             }
             else if (f.db_type == "smallint") {
-                file << "        stmt_update_by_" << e.name << "_->set_param_short(info_." << f.name << ");" << endl;
+                file << "            stmt->set_param_short(info_." << f.name << ");" << endl;
             }
             else if (f.db_type == "mediumint" ||
                      f.db_type == "int" ||
                      f.db_type == "integer") {
-                file << "        stmt_update_by_" << e.name << "_->set_param_long(info_." << f.name << ");" << endl;
+                file << "            stmt->set_param_long(info_." << f.name << ");" << endl;
             }
             else if (f.db_type == "bigint") {
-                file << "        stmt_update_by_" << e.name << "_->set_param_longlong(info_." << f.name << ");" << endl;
+                file << "            stmt->set_param_longlong(info_." << f.name << ");" << endl;
             }
             else if (f.db_type == "float") {
-                file << "        stmt_update_by_" << e.name << "_->set_param_float(info_." << f.name << ");" << endl;
+                file << "            stmt->set_param_float(info_." << f.name << ");" << endl;
             }
             else if (f.db_type == "double") {
-                file << "        stmt_update_by_" << e.name << "_->set_param_double(info_." << f.name << ");" << endl;
+                file << "            stmt->set_param_double(info_." << f.name << ");" << endl;
             }
             else if (f.db_type == "char" ||
                      f.db_type == "varchar" ||
@@ -895,7 +888,7 @@ void gen_indexed_update_reference(ofstream &file, table_info &info)
                      f.db_type == "text" ||
                      f.db_type == "mediumtext" ||
                      f.db_type == "longtext") {
-                file << "        stmt_update_by_" << e.name << "_->set_param_string(&info_." << f.name << ");" << endl;
+                file << "            stmt->set_param_string(&info_." << f.name << ");" << endl;
             }
             else if (f.db_type == "tinyblob" ||
                      f.db_type == "blob" ||
@@ -904,41 +897,42 @@ void gen_indexed_update_reference(ofstream &file, table_info &info)
                     f.db_type == "binary" ||
                     f.db_type == "varbinary") {
                 
-                file << "        stmt_update_by_" << e.name << "_->set_param_blob(&info_." << f.name << ");" << endl;
+                file << "            stmt->set_param_blob(&info_." << f.name << ");" << endl;
             }
             else if (f.db_type == "date") {
-                file << "        stmt_update_by_" << e.name << "_->set_param_date(&info_." << f.name << ");" << endl;
+                file << "            stmt->set_param_date(&info_." << f.name << ");" << endl;
             }
             else if (f.db_type == "time") {
-                file << "        stmt_update_by_" << e.name << "_->set_param_time(&info_." << f.name << ");" << endl;
+                file << "            stmt->set_param_time(&info_." << f.name << ");" << endl;
             }
             else if (f.db_type == "datetime") {
-                file << "        stmt_update_by_" << e.name << "_->set_param_datetime(&info_." << f.name << ");" << endl;
+                file << "            stmt->set_param_datetime(&info_." << f.name << ");" << endl;
             }
             else if (f.db_type == "timestamp") {
-                file << "        stmt_update_by_" << e.name << "_->set_param_timestamp(&info_." << f.name << ");" << endl;
+                file << "            stmt->set_param_timestamp(&info_." << f.name << ");" << endl;
             }
+            file << "        }" << endl;
         }
         for (auto &f : e.column) {
             if (f.db_type == "tinyint") {
-                file << "        stmt_update_by_" << e.name << "_->set_param_tiny(where_" << e.name << "_." << f.name << ");" << endl;
+                file << "        stmt->set_param_tiny(where_" << e.name << "_." << f.name << ");" << endl;
             }
             else if (f.db_type == "smallint") {
-                file << "        stmt_update_by_" << e.name << "_->set_param_short(where_" << e.name << "_." << f.name << ");" << endl;
+                file << "        stmt->set_param_short(where_" << e.name << "_." << f.name << ");" << endl;
             }
             else if (f.db_type == "mediumint" ||
                      f.db_type == "int" ||
                      f.db_type == "integer") {
-                file << "        stmt_update_by_" << e.name << "_->set_param_long(where_" << e.name << "_." << f.name << ");" << endl;
+                file << "        stmt->set_param_long(where_" << e.name << "_." << f.name << ");" << endl;
             }
             else if (f.db_type == "bigint") {
-                file << "        stmt_update_by_" << e.name << "_->set_param_longlong(where_" << e.name << "_." << f.name << ");" << endl;
+                file << "        stmt->set_param_longlong(where_" << e.name << "_." << f.name << ");" << endl;
             }
             else if (f.db_type == "float") {
-                file << "        stmt_update_by_" << e.name << "_->set_param_float(where_" << e.name << "_." << f.name << ");" << endl;
+                file << "        stmt->set_param_float(where_" << e.name << "_." << f.name << ");" << endl;
             }
             else if (f.db_type == "double") {
-                file << "        stmt_update_by_" << e.name << "_->set_param_double(where_" << e.name << "_." << f.name << ");" << endl;
+                file << "        stmt->set_param_double(where_" << e.name << "_." << f.name << ");" << endl;
             }
             else if (f.db_type == "char" ||
                      f.db_type == "varchar" ||
@@ -946,7 +940,7 @@ void gen_indexed_update_reference(ofstream &file, table_info &info)
                      f.db_type == "text" ||
                      f.db_type == "mediumtext" ||
                      f.db_type == "longtext") {
-                file << "        stmt_update_by_" << e.name << "_->set_param_string(&where_" << e.name << "_." << f.name << ");" << endl;
+                file << "        stmt->set_param_string(&where_" << e.name << "_." << f.name << ");" << endl;
             }
             else if (f.db_type == "tinyblob" ||
                      f.db_type == "blob" ||
@@ -954,19 +948,19 @@ void gen_indexed_update_reference(ofstream &file, table_info &info)
                      f.db_type == "longblob" ||
                     f.db_type == "binary" ||
                     f.db_type == "varbinary") {
-                file << "        stmt_update_by_" << e.name << "_->set_param_blob(&where_" << e.name << "_." << f.name << ");" << endl;
+                file << "        stmt->set_param_blob(&where_" << e.name << "_." << f.name << ");" << endl;
             }
             else if (f.db_type == "date") {
-                file << "        stmt_update_by_" << e.name << "_->set_param_date(&where_" << e.name << "_." << f.name << ");" << endl;
+                file << "        stmt->set_param_date(&where_" << e.name << "_." << f.name << ");" << endl;
             }
             else if (f.db_type == "time") {
-                file << "        stmt_update_by_" << e.name << "_->set_param_time(&where_" << e.name << "_." << f.name << ");" << endl;
+                file << "        stmt->set_param_time(&where_" << e.name << "_." << f.name << ");" << endl;
             }
             else if (f.db_type == "datetime") {
-                file << "        stmt_update_by_" << e.name << "_->set_param_datetime(&where_" << e.name << "_." << f.name << ");" << endl;
+                file << "        stmt->set_param_datetime(&where_" << e.name << "_." << f.name << ");" << endl;
             }
             else if (f.db_type == "timestamp") {
-                file << "        stmt_update_by_" << e.name << "_->set_param_timestamp(&where_" << e.name << "_." << f.name << ");" << endl;
+                file << "        stmt->set_param_timestamp(&where_" << e.name << "_." << f.name << ");" << endl;
             }
         }
         file << "    }" << endl;
@@ -980,11 +974,11 @@ void gen_indexed_update_reference(ofstream &file, table_info &info)
                 file << "    where_" << e.name << "_." << f.name << ".size = where_" << e.name << "_." << f.name << ".len + 1;" << endl;
             }
         }
-        file << "    if (stmt_update_by_" << e.name << "_->execute() != 0) {" << endl;
-        file << "        code_ = " << "stmt_update_by_" << e.name << "_->code();" << endl;
-        file << "        msg_ = " << "stmt_update_by_" << e.name << "_->msg();" << endl;
+        file << "    if (stmt->execute() != 0) {" << endl;
+        file << "        code_ = " << "stmt->code();" << endl;
+        file << "        msg_ = " << "stmt->msg();" << endl;
         file << "        std::string sql;" << endl;
-        file << "        sql = update_dump_sql_by_" << e.name << "(sql);" << endl;
+        file << "        sql = update_dump_sql_by_" << e.name << "(sql, omit_fields);" << endl;
         file << "        dump(sql.c_str());" << endl;
         file << "        return -1;" << endl;
         file << "    }" << endl;
@@ -997,7 +991,7 @@ void gen_indexed_update_reference(ofstream &file, table_info &info)
 void gen_indexed_delete_reference(ofstream &file, table_info &info)
 {
     for (auto &e : info.indexes) {
-        gen_index_func_name(file, e, "del_by_", info.name);
+        gen_index_func_name(file, e, "del_by_", info.name, true);
         file << endl << "{" << endl;
         check_param(file, e);
         file << "    if (stmt_del_by_" << e.name << "_ == nullptr) {" << endl;
@@ -1113,6 +1107,7 @@ void gen_db_unrelated_reference(ofstream &file, table_info &info)
         }
     }
     file << "    buffer_array_.resize(" << ref << ", {0});" << endl;
+    gen_init_all_fields(file, info);
     file << "}" << endl;
     file << endl;
     ///< 析构函数
@@ -1165,6 +1160,13 @@ void gen_struct(ofstream &file, table_info &info)
     file << endl;
 }
 
+void gen_init_all_fields(ofstream &file, table_info &info)
+{
+    for (auto &e : info.fields) {
+        file << "    all_fields_.push_back(\"" << e.name << "\");" << endl;
+    }
+}
+
 void gen_defination(ofstream &file, table_info &info)
 {
     file << "public:" << endl;
@@ -1180,8 +1182,8 @@ void gen_defination(ofstream &file, table_info &info)
     file << "    std::string &msg() {return msg_;}" << endl;
     file << "    int32_t code() {return code_;}" << endl;
     file << "public:" << endl;
-    file << "    int32_t insert();" << endl;
-    file << "    int32_t select(const std::string &where = \"\");" << endl;
+    file << "    int32_t insert(const std::unordered_set<std::string> &omit_fields = {});" << endl;
+    file << "    int32_t select(const std::string &where = \"\", const std::unordered_set<std::string> &omit_fields = {});" << endl;
     file << "    " << utils::lower(info.name) << STRUCT_TAIL << " *fetch();" << endl;
     file << "    int32_t count(const std::string &where = \"\");" << endl;
     file << "    int32_t del(const std::string &where = \"\");" << endl;
@@ -1215,9 +1217,9 @@ void gen_defination(ofstream &file, table_info &info)
     file << "        return buf;" << endl;
     file << "    }" << endl;
     file << "    void dump(const char *sql);" << endl;
-    file << "    std::string &insert_dump_sql(std::string &sql);" << endl;
+    file << "    std::string &insert_dump_sql(std::string &sql, const std::unordered_set<std::string> &omit_fields);" << endl;
     for (auto &e : info.indexes) {
-        file << "    std::string &update_dump_sql_by_" << e.name << "(std::string &sql);" << endl;
+        file << "    std::string &update_dump_sql_by_" << e.name << "(std::string &sql, const std::unordered_set<std::string> &omit_fields);" << endl;
         file << "    std::string &del_dump_sql_by_" << e.name << "(std::string &sql);" << endl;
     }
     file << "private:" << endl;
@@ -1226,7 +1228,6 @@ void gen_defination(ofstream &file, table_info &info)
     file << "    mysql_stmt *stmt_insert_" << " = {nullptr};" << endl;
     for (auto &e : info.indexes) {
         file << "    mysql_stmt *stmt_select_by_" << e.name << "_ = {nullptr};" << endl;
-        file << "    mysql_stmt *stmt_update_by_" << e.name << "_ = {nullptr};" << endl;
         file << "    mysql_stmt *stmt_del_by_" << e.name << "_ = {nullptr};" << endl;
         file << "    " << info.name << "_" << e.name << " where_" << e.name << "_;"<< endl;
     }
@@ -1234,9 +1235,11 @@ void gen_defination(ofstream &file, table_info &info)
     file << "    std::string msg_;" << endl;
     file << "    int32_t code_;" << endl;
     file << "    std::string dump_file_;" << endl;
+    file << "    std::vector<std::string> all_fields_;" << endl;
+    file << "    std::unordered_map<std::string, mysql_stmt *> stmts_;" << endl;
 }
 
-void gen_index_func_name(ofstream &file, index_info &e, string func_head, string name_space)
+void gen_index_func_name(ofstream &file, index_info &e, string func_head, string name_space, bool bsrc)
 {
     if (name_space.length() == 0) {
         file << "    int32_t " << func_head << utils::lower(e.name) << "(";
@@ -1263,7 +1266,13 @@ void gen_index_func_name(ofstream &file, index_info &e, string func_head, string
             file << ", ";
         }
     }
-    file << ")";
+    if (bsrc) {
+        file << ", const std::unordered_set<std::string> &omit_fields)";
+    } 
+    else {
+        file << ", const std::unordered_set<std::string> &omit_fields = {})";
+    }
+    
 }
 
 void print_err(string mark)
