@@ -117,7 +117,10 @@ FETCH:
         else {
             current_set_[i]->len = lengths[i];
             memcpy(current_set_[i]->buf, row[i], current_set_[i]->len);
-            current_set_[i]->buf[current_set_[i]->len] = 0;///< 防止字符串没有结束符
+            if (fields[i].type == MYSQL_TYPE_STRING ||
+                fields[i].type == MYSQL_TYPE_VAR_STRING) {
+                current_set_[i]->buf[current_set_[i]->len] = 0;///< 防止字符串没有结束符
+            }
         }
     }
     return 0;

@@ -5,7 +5,7 @@ cmake_minimum_required (VERSION 2.8)
 
 #name.
 project(tbl_generator)
-set(PRJ_VER "1.0.1")
+set(PRJ_VER "1.0.2")
 
 
 #include compile macro.
