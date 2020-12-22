@@ -480,6 +480,7 @@ void gen_count_reference(ofstream &file, table_info &info)
     file << "        msg_ = mysql_->msg();" << endl;
     file << "        return -1;" << endl;
     file << "    }" << endl;
+    file << "    mysql_->free_result();" << endl;
     file << "    return result;" << endl;
     file << "}" << endl;
     file << endl;

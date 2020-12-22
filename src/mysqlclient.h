@@ -74,6 +74,10 @@ public:
      */
     int32_t fetch();
     /**
+     * @brief 清空结果集
+     */
+    void free_result();
+    /**
      * @brief 从结果集取1行
      *
      * {@param[in] set_pos 结果集的id，从0开始}
@@ -373,6 +377,10 @@ public:
      * {@retval 0 succ; -1 fail}
      */
     int32_t fetch();
+    /**
+     * @brief 清空结果集
+     */
+    void free_result();
     /**
      * @brief 错误码
      *

@@ -79,7 +79,7 @@ FETCH:
     MYSQL_ROW row = mysql_fetch_row(res_);
     if (nullptr == row) {
         ///< 当前结果集没有数据了
-        mysql_free_result(res_);
+        free_result();
         res_ = nullptr;
         return 1;
     }
@@ -124,6 +124,12 @@ FETCH:
         }
     }
     return 0;
+}
+
+void mysql_api::free_result()
+{
+    mysql_free_result(res_);
+    res_ = nullptr;
 }
 
 int32_t mysql_api::set_field(uint32_t set_pos, buffer_field *field)
@@ -683,10 +689,15 @@ int32_t mysql_stmt::fetch()
 {
     int status = mysql_stmt_fetch(stmt_);
     if (status == 1 || status == MYSQL_NO_DATA) {
-        mysql_stmt_free_result(stmt_);
+        free_result();
         return -1;
     }
     return 0;
+}
+
+void mysql_stmt::free_result()
+{
+    mysql_stmt_free_result(stmt_);
 }
 
 uint32_t mysql_stmt::code()
