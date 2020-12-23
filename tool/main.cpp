@@ -88,6 +88,7 @@ int cache_table_info()
     }
     mysql.set_field(0, &fields[0]);
     while (1) {
+        memset(buf, 0, sizeof(buf));
         if (mysql.fetch() != 0) {
             break;
         }
@@ -111,6 +112,7 @@ int cache_table_info()
         mysql.set_field(0, &fields[5]);
         char size[128] = {0};
         while (1) {
+            memset(buf, 0, sizeof(buf));
             if (mysql.fetch() != 0) {
                 break;
             }
@@ -147,6 +149,7 @@ int cache_table_info()
         mysql.set_field(0, &fields[12]);
         index_info index;
         while (1) {
+            memset(buf, 0, sizeof(buf));
             if (mysql.fetch() != 0) {
                 break;
             }
