@@ -1,7 +1,7 @@
 # The name of our project is "HELLO". CMakeLists files in this project can
 # refer to the root src directory of the project as ${HELLO_src_DIR} and
 # to the root binary directory of the project as ${HELLO_BINARY_DIR}.
-cmake_minimum_required (VERSION 2.8)
+cmake_minimum_required (VERSION 2.8.4)
 
 #name.
 project(tbl_generator)

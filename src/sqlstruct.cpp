@@ -174,7 +174,7 @@ int32_t result_set::set_field(uint32_t pos, buffer_field *buffer)
     return 0;
 }
 
-int32_t result_set::rewind()
+void result_set::rewind()
 {
     for (uint32_t i = 0; i < size_; i++) {
         result_sets_[i].pos = 0;

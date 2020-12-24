@@ -120,11 +120,8 @@ public:
     int32_t set_field(uint32_t pos, buffer_field *buffer);
     /**
      * @brief 重置当前结果集索引
-     *
-     * {@return int32_t}
-     * {@retval 0 succ; -1 fail}
      */
-    int32_t rewind();
+    void rewind();
     /**
      * @brief 创建结果集
      *
