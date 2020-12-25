@@ -32,11 +32,11 @@ int main()
     //test_all_fields_insert(t);
     //test_omit_insert(t);
     //test_all_fields_update(t);
-    //test_omit_update(t);
-    //test_all_fields_select(t);
+    test_omit_update(t);
+    test_all_fields_select(t);
     //test_omit_select(t);
-    test_all_fields_select_by_index(t);
-    test_omit_select_by_index(t);
+    //test_all_fields_select_by_index(t);
+    //test_omit_select_by_index(t);
     mysql.destroy();
     return 0;
 }
@@ -147,7 +147,7 @@ void test_all_fields_update(tbl_test_model &t)
 void test_omit_update(tbl_test_model &t)
 {
     auto info = t.get_info();
-    info->id = 1;
+    info->id = 20;
     strcpy(info->name.buf, "test_upoo");
     info->name.len = strlen(info->name.buf);
     char buf[] = {
@@ -159,7 +159,7 @@ void test_omit_update(tbl_test_model &t)
     info->create_ts.len = strlen(info->create_ts.buf);
     strcpy(info->update_ts.buf, "1999-12-20_16:48:00.123456");
     info->update_ts.len = strlen(info->update_ts.buf);
-    if (t.update_by_primary(1, {"id", "buff", "update_ts"}) != 0) {
+    if (t.update_by_primary(20, {"id", "buff", "update_ts"}) != 0) {
         std::cout << "error: [" << t.code() << "][" << t.msg() << std::endl;
     }
 }

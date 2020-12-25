@@ -83,7 +83,7 @@ private:
     std::string msg_;
     int32_t code_;
     std::string dump_file_;
-    std::vector<std::string> all_fields_;
+    std::vector<std::pair<std::string, std::string>> all_fields_;
     std::unordered_map<std::string, mysql_stmt *> stmts_;
 };
 #endif ///< _TBL_TEST_MODEL_H_

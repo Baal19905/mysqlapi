@@ -16,11 +16,11 @@ tbl_test_model::tbl_test_model()
     info_.update_ts.size = 26 + 1;
     zero_info();
     buffer_array_.resize(1, {0});
-    all_fields_.push_back("id");
-    all_fields_.push_back("name");
-    all_fields_.push_back("buff");
-    all_fields_.push_back("create_ts");
-    all_fields_.push_back("update_ts");
+    all_fields_.push_back({"id", "int"});
+    all_fields_.push_back({"name", "varchar"});
+    all_fields_.push_back({"buff", "varbinary"});
+    all_fields_.push_back({"create_ts", "datetime"});
+    all_fields_.push_back({"update_ts", "timestamp"});
 }
 
 tbl_test_model::~tbl_test_model()
@@ -49,8 +49,8 @@ int32_t tbl_test_model::insert(const std::unordered_set<std::string> &omit_field
     std::string fields = "(";
     std::string values = "(";
     for (auto &e : all_fields_) {
-        if (omit_fields.find(e) == omit_fields.end()) {
-            fields += e + ",";
+        if (omit_fields.find(e.first) == omit_fields.end()) {
+            fields += e.first + ",";
             values += "?,";
         }
     }
@@ -98,8 +98,13 @@ int32_t tbl_test_model::select_by_primary(int32_t id, const std::unordered_set<s
 {
     std::string fields;
     for (auto &e : all_fields_) {
-        if (omit_fields.find(e) == omit_fields.end()) {
-            fields += e + ",";
+        if (omit_fields.find(e.first) == omit_fields.end()) {
+            if (e.second == "timestamp" || e.second == "datetime") {
+                fields += "date_format(" + e.first + ",'%Y-%m-%d_%H:%i:%s.%f'),";
+            }
+            else {
+                fields += e.first + ",";
+            }
         }
     }
     fields.pop_back();
@@ -160,8 +165,8 @@ int32_t tbl_test_model::update_by_primary(int32_t id, const std::unordered_set<s
 {
     std::string fields;
     for (auto &e : all_fields_) {
-        if (omit_fields.find(e) == omit_fields.end()) {
-            fields += e + " = ?,";
+        if (omit_fields.find(e.first) == omit_fields.end()) {
+            fields += e.first + " = ?,";
         }
     }
     fields.pop_back();
@@ -234,8 +239,13 @@ int32_t tbl_test_model::select(const std::string &where, const std::unordered_se
 {
     std::string fields;
     for (auto &e : all_fields_) {
-        if (omit_fields.find(e) == omit_fields.end()) {
-            fields += e + ",";
+        if (omit_fields.find(e.first) == omit_fields.end()) {
+            if (e.second == "timestamp" || e.second == "datetime") {
+                fields += "date_format(" + e.first + ",'%Y-%m-%d_%H:%i:%s.%f'),";
+            }
+            else {
+                fields += e.first + ",";
+            }
         }
     }
     fields.pop_back();
@@ -341,8 +351,8 @@ std::string &tbl_test_model::insert_dump_sql(std::string &sql, const std::unorde
     char tmp[4096];
     std::string fields;
     for (auto &e : all_fields_) {
-        if (omit_fields.find(e) == omit_fields.end()) {
-            fields += e + ",";
+        if (omit_fields.find(e.first) == omit_fields.end()) {
+            fields += e.first + ",";
         }
     }
     fields[fields.length() - 1] = ')';
